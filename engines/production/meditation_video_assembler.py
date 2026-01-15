@@ -114,9 +114,12 @@ class MeditationVideoAssembler:
             segment_duration = min(15, duration - total_time)  # Max 15s per segment
 
             segment_file = os.path.join(self.output_dir, f'segment_{video_idx}.mp4')
+
+            # CRITICAL FIX: Scale all videos to 1920x1080 to match overlay resolution
             cmd = [
                 'ffmpeg', '-y', '-i', video_file,
                 '-t', str(segment_duration),
+                '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
                 '-c:v', 'libx264', '-c:a', 'aac',
                 segment_file
             ]
