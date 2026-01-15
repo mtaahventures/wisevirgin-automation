@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Data & Outputs (don't commit videos/audio)
+output/videos/*.mp4
+output/audio/*.mp3
+output/audio/*.wav
+data/cache/*
+*.mp4
+*.mp3
+*.wav
+
+# Logs
+logs/*.log
+
+# Secrets
+config/api_keys.json
+config/.env
+.env
+*.pickle
+*_token.json
+credentials*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Keep directory structure
+!output/videos/.gitkeep
+!output/audio/.gitkeep
+!output/thumbnails/.gitkeep
+!data/cache/.gitkeep
+!logs/.gitkeep
+venv/
