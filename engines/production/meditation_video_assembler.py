@@ -135,12 +135,13 @@ class MeditationVideoAssembler:
             for seg in video_segments:
                 f.write(f"file '{os.path.basename(seg)}'\n")
 
-        # Concatenate videos
+        # Concatenate videos - re-encode to prevent freezes/glitches
         base_video = os.path.join(self.output_dir, f'{timestamp}_base.mp4')
         cmd = [
             'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
             '-i', concat_file,
-            '-c', 'copy',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
             base_video
         ]
         subprocess.run(cmd, check=True, capture_output=True)
