@@ -74,8 +74,12 @@ class MeditationVideoAssembler:
 
     def assemble_meditation_video(self, nature_videos, scriptures, music_file, duration=300):
         """
-        Assemble meditation video with nature footage, scripture overlays, and music
-        duration: total video length in seconds (default 5 minutes)
+        Assemble meditation video using ONE looped clip with text overlays
+
+        SIMPLEST APPROACH:
+        1. Take first nature clip and loop it to fill duration
+        2. Add all text overlays on top
+        3. Add music
         """
         logger.info(f'Assembling meditation video: {duration}s')
 
@@ -99,55 +103,35 @@ class MeditationVideoAssembler:
             overlay_file = self.create_scripture_overlay(verse_text, reference, idx)
             overlay_files.append(overlay_file)
 
-        # Calculate timing
+        # Calculate timing for text overlays
         time_per_verse = duration / len(scriptures)
         logger.info(f'{len(scriptures)} verses, {time_per_verse:.1f}s per verse')
 
-        # Concatenate nature videos to fill duration
-        logger.info('Preparing nature video clips...')
-        video_segments = []
-        total_time = 0
-        video_idx = 0
+        # STEP 1: Create continuous background from ONE nature clip
+        logger.info('Creating continuous background from single nature clip...')
 
-        while total_time < duration:
-            video_file = nature_videos[video_idx % len(nature_videos)]
-            segment_duration = min(15, duration - total_time)  # Max 15s per segment
+        # Use first nature video
+        source_video = nature_videos[0]
 
-            segment_file = os.path.join(self.output_dir, f'segment_{video_idx}.mp4')
-
-            # CRITICAL FIX: Scale all videos to 1920x1080 to match overlay resolution
-            cmd = [
-                'ffmpeg', '-y', '-i', video_file,
-                '-t', str(segment_duration),
-                '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
-                '-c:v', 'libx264', '-c:a', 'aac',
-                segment_file
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-
-            video_segments.append(segment_file)
-            total_time += segment_duration
-            video_idx += 1
-
-        # Create concat file
-        concat_file = os.path.join(self.output_dir, 'concat_list.txt')
-        with open(concat_file, 'w') as f:
-            for seg in video_segments:
-                f.write(f"file '{os.path.basename(seg)}'\n")
-
-        # Concatenate videos - re-encode to prevent freezes/glitches
         base_video = os.path.join(self.output_dir, f'{timestamp}_base.mp4')
+
+        # Scale, loop, and trim to exact duration in one command
         cmd = [
-            'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
-            '-i', concat_file,
+            'ffmpeg', '-y',
+            '-stream_loop', '-1',  # Loop infinitely
+            '-i', source_video,
+            '-t', str(duration),  # Stop at exact duration
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '192k',
+            '-r', '25',  # Fixed 25fps
+            '-an',  # No audio (will add music later)
             base_video
         ]
-        subprocess.run(cmd, check=True, capture_output=True)
-        logger.info('Nature videos concatenated')
 
-        # Add scripture overlays
+        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f'Continuous background created from single clip ({duration}s)')
+
+        # STEP 2: Add scripture overlays on top
         logger.info('Adding scripture overlays...')
         overlay_filters = []
         current_time = 0
@@ -181,20 +165,20 @@ class MeditationVideoAssembler:
         cmd = ['ffmpeg', '-y'] + input_params + [
             '-filter_complex', filter_complex,
             '-map', video_out,
-            '-c:v', 'libx264', '-preset', 'medium',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
             video_with_overlays
         ]
         subprocess.run(cmd, check=True, capture_output=True)
         logger.info('Scripture overlays added')
 
-        # Add background music
+        # STEP 3: Add background music
         if music_file and os.path.exists(music_file):
             logger.info('Adding peaceful music...')
             cmd = [
                 'ffmpeg', '-y',
                 '-i', video_with_overlays,
                 '-i', music_file,
-                '-filter_complex', '[1:a]volume=0.3,aloop=loop=-1:size=2e+09[music];[music]atrim=0:' + str(duration) + '[audio]',
+                '-filter_complex', f'[1:a]volume=0.3,aloop=loop=-1:size=2e+09[music];[music]atrim=0:{duration}[audio]',
                 '-map', '0:v', '-map', '[audio]',
                 '-c:v', 'copy', '-c:a', 'aac',
                 '-shortest',
@@ -207,9 +191,6 @@ class MeditationVideoAssembler:
             os.rename(video_with_overlays, output_file)
 
         # Cleanup
-        for seg in video_segments:
-            if os.path.exists(seg):
-                os.remove(seg)
         if os.path.exists(base_video):
             os.remove(base_video)
         if os.path.exists(video_with_overlays) and os.path.exists(output_file):
