@@ -43,3 +43,4 @@ Thumbs.db
 !data/cache/.gitkeep
 !logs/.gitkeep
 venv/
+output/

@@ -72,7 +72,7 @@ class MeditationVideoAssembler:
         logger.info(f'Created scripture overlay: {output_file}')
         return output_file
 
-    def assemble_meditation_video(self, nature_videos, scriptures, music_file, duration=300):
+    def assemble_meditation_video(self, nature_videos, scriptures, music_file, duration=300, verse_timings=None):
         """
         Assemble meditation video using ONE looped clip with text overlays
 
@@ -97,15 +97,18 @@ class MeditationVideoAssembler:
                     verse_text = verse_data
                     reference = ''
             else:
-                verse_text = verse_data.get('text', '')
+                verse_text = verse_data.get('verse', verse_data.get('text', ''))
                 reference = verse_data.get('reference', '')
 
             overlay_file = self.create_scripture_overlay(verse_text, reference, idx)
             overlay_files.append(overlay_file)
 
-        # Calculate timing for text overlays
-        time_per_verse = duration / len(scriptures)
-        logger.info(f'{len(scriptures)} verses, {time_per_verse:.1f}s per verse')
+        # Calculate timing for text overlays (dynamic or fixed)
+        if verse_timings:
+            logger.info(f"{len(scriptures)} verses with DYNAMIC timing")
+        else:
+            time_per_verse = duration / len(scriptures)
+            logger.info(f"{len(scriptures)} verses, {time_per_verse:.1f}s per verse (fixed)")
 
         # STEP 1: Create continuous background from ONE nature clip
         logger.info('Creating continuous background from single nature clip...')
@@ -137,8 +140,20 @@ class MeditationVideoAssembler:
         current_time = 0
 
         for idx, overlay_file in enumerate(overlay_files):
-            start_time = current_time
-            end_time = current_time + time_per_verse
+            if verse_timings:
+                # Use dynamic timing from narrator
+                start_time = verse_timings[idx]['text_appears']
+                # Text stays until next text appears (or end of video)
+                if idx < len(verse_timings) - 1:
+                    end_time = verse_timings[idx+1]['text_appears']
+                else:
+                    end_time = duration
+            else:
+                # Use fixed timing
+                start_time = current_time
+                end_time = current_time + time_per_verse
+                current_time = end_time
+            
             overlay_filters.append(
                 f"[0:v][{idx+1}:v]overlay=0:0:enable='between(t,{start_time},{end_time})'[v{idx}]"
             )
