@@ -153,7 +153,7 @@ class MeditationVideoAssembler:
             '-stream_loop', '-1',  # Loop infinitely
             '-i', nature_videos[0],  # Use FIRST clip only
             '-t', str(duration),  # Stop at exact duration
-            '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black',
+            '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
             '-r', '25',
             '-an',  # No audio yet
