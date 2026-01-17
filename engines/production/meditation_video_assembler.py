@@ -1,5 +1,6 @@
 """
 Meditation Video Assembler - Creates videos with scripture overlays and peaceful music
+Supports multiple resolutions: 1920x1080 (16:9), 1080x1080 (1:1 square)
 """
 import os
 import subprocess
@@ -19,27 +20,46 @@ class MeditationVideoAssembler:
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.overlay_dir, exist_ok=True)
 
-    def create_scripture_overlay(self, verse_text, reference, index, output_file=None):
-        """Create a beautiful scripture overlay image"""
+    def create_scripture_overlay(self, verse_text, reference, index, output_file=None, width=1920, height=1080):
+        """
+        Create a beautiful scripture overlay image with custom resolution
+
+        Args:
+            verse_text: Bible verse text
+            reference: Bible reference (e.g., "John 3:16")
+            index: Verse index
+            output_file: Path to save overlay PNG
+            width: Overlay width in pixels (default 1920)
+            height: Overlay height in pixels (default 1080)
+        """
         if not output_file:
             output_file = os.path.join(self.overlay_dir, f'scripture_{index}.png')
 
-        # Create 1920x1080 image with semi-transparent dark background
-        img = Image.new('RGBA', (1920, 1080), (0, 0, 0, 0))
+        # Create image with semi-transparent dark background
+        img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        # Add subtle dark overlay for text readability
-        overlay_box = [(0, 400), (1920, 680)]
+        # Calculate dimensions based on resolution
+        scale_factor = min(width / 1920, height / 1080)
+
+        # Add subtle dark overlay for text readability (proportional to height)
+        overlay_top = int(height * 0.37)  # ~400px at 1080p
+        overlay_bottom = int(height * 0.63)  # ~680px at 1080p
+        overlay_box = [(0, overlay_top), (width, overlay_bottom)]
         draw.rectangle(overlay_box, fill=(0, 0, 0, 120))
+
+        # Calculate font sizes
+        verse_font_size = int(52 * scale_factor)
+        ref_font_size = int(36 * scale_factor)
 
         # Try to load fonts
         try:
-            verse_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf', 52)
-            ref_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf', 36)
+            verse_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf', verse_font_size)
+            ref_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf', ref_font_size)
         except:
             try:
-                verse_font = ImageFont.truetype('arial.ttf', 52)
-                ref_font = ImageFont.truetype('arial.ttf', 36)
+                verse_font = ImageFont.truetype('arial.ttf', verse_font_size)
+                ref_font = ImageFont.truetype('arial.ttf', ref_font_size)
             except:
                 verse_font = ImageFont.load_default()
                 ref_font = ImageFont.load_default()
@@ -47,46 +67,59 @@ class MeditationVideoAssembler:
         # Clean verse text (remove quotes)
         clean_verse = verse_text.strip('"').strip("'")
 
-        # Wrap text
-        wrapped = textwrap.fill(clean_verse, width=50)
+        # Wrap text (proportional to width)
+        wrap_width = int(50 * (width / 1920))
+        wrapped = textwrap.fill(clean_verse, width=wrap_width)
         lines = wrapped.split('\n')
 
         # Draw verse text (centered)
-        y_position = 450
+        line_height = int(60 * scale_factor)
+        y_position = int(height * 0.42)  # ~450px at 1080p
+
         for line in lines:
             bbox = draw.textbbox((0, 0), line, font=verse_font)
             text_width = bbox[2] - bbox[0]
-            x_position = (1920 - text_width) // 2
+            x_position = (width - text_width) // 2
             draw.text((x_position, y_position), line, fill=(255, 255, 255, 255), font=verse_font)
-            y_position += 60
+            y_position += line_height
 
         # Draw reference (centered below verse)
-        y_position += 20
+        y_position += int(20 * scale_factor)
         bbox = draw.textbbox((0, 0), reference, font=ref_font)
         ref_width = bbox[2] - bbox[0]
-        x_position = (1920 - ref_width) // 2
+        x_position = (width - ref_width) // 2
         draw.text((x_position, y_position), reference, fill=(200, 200, 200, 255), font=ref_font)
 
         # Save
         img.save(output_file, 'PNG')
-        logger.info(f'Created scripture overlay: {output_file}')
+        logger.info(f'Created scripture overlay: {output_file} ({width}x{height})')
         return output_file
 
-    def assemble_meditation_video(self, nature_videos, scriptures, music_file, duration=300, verse_timings=None):
+    def assemble_meditation_video(self, nature_videos, scriptures, music_file, duration=300, verse_timings=None, resolution="1920x1080"):
         """
         Assemble meditation video using ONE looped clip with text overlays
 
-        SIMPLEST APPROACH:
-        1. Take first nature clip and loop it to fill duration
-        2. Add all text overlays on top
-        3. Add music
+        Args:
+            nature_videos: List of nature video paths
+            scriptures: List of scripture dicts with 'verse' and 'reference'
+            music_file: Path to background music
+            duration: Video duration in seconds
+            verse_timings: Optional dynamic timing data from narrator
+            resolution: Video resolution (e.g., "1920x1080", "1080x1080")
+
+        Returns:
+            str: Path to output video
         """
-        logger.info(f'Assembling meditation video: {duration}s')
+        # Parse resolution
+        width, height = resolution.split('x')
+        width, height = int(width), int(height)
 
-        timestamp = datetime.now().strftime('%Y-%m-%d')
-        output_file = os.path.join(self.output_dir, f'{timestamp}_meditation.mp4')
+        logger.info(f'Assembling meditation video: {duration}s at {resolution} ({width}x{height})')
 
-        # Create scripture overlays
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        output_file = os.path.join(self.output_dir, f'{timestamp}_meditation_{resolution.replace("x", "_")}.mp4')
+
+        # Create scripture overlays with custom resolution
         overlay_files = []
         for idx, verse_data in enumerate(scriptures):
             # Parse verse
@@ -97,45 +130,44 @@ class MeditationVideoAssembler:
                     verse_text = verse_data
                     reference = ''
             else:
+                # Support both 'verse' and 'text' keys
                 verse_text = verse_data.get('verse', verse_data.get('text', ''))
                 reference = verse_data.get('reference', '')
 
-            overlay_file = self.create_scripture_overlay(verse_text, reference, idx)
+            overlay_file = os.path.join(self.overlay_dir, f'scripture_{idx}.png')
+            self.create_scripture_overlay(verse_text, reference, idx, overlay_file, width, height)
             overlay_files.append(overlay_file)
 
-        # Calculate timing for text overlays (dynamic or fixed)
+        # Determine timing approach
         if verse_timings:
-            logger.info(f"{len(scriptures)} verses with DYNAMIC timing")
+            logger.info(f'{len(scriptures)} verses with DYNAMIC timing')
         else:
             time_per_verse = duration / len(scriptures)
-            logger.info(f"{len(scriptures)} verses, {time_per_verse:.1f}s per verse (fixed)")
+            logger.info(f'{len(scriptures)} verses, {time_per_verse:.1f}s per verse (fixed)')
 
-        # STEP 1: Create continuous background from ONE nature clip
-        logger.info('Creating continuous background from single nature clip...')
+        # Step 1: Loop single nature clip to fill exact duration
+        base_video = os.path.join(self.output_dir, 'base_video.mp4')
 
-        # Use first nature video
-        source_video = nature_videos[0]
-
-        base_video = os.path.join(self.output_dir, f'{timestamp}_base.mp4')
-
-        # Scale, loop, and trim to exact duration in one command
-        cmd = [
+        scale_cmd = [
             'ffmpeg', '-y',
             '-stream_loop', '-1',  # Loop infinitely
-            '-i', source_video,
+            '-i', nature_videos[0],  # Use FIRST clip only
             '-t', str(duration),  # Stop at exact duration
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
+            '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-            '-r', '25',  # Fixed 25fps
-            '-an',  # No audio (will add music later)
+            '-r', '25',
+            '-an',  # No audio yet
             base_video
         ]
 
-        subprocess.run(cmd, check=True, capture_output=True)
-        logger.info(f'Continuous background created from single clip ({duration}s)')
+        subprocess.run(scale_cmd, check=True, capture_output=True)
+        logger.info(f'Base video created: {resolution}')
 
-        # STEP 2: Add scripture overlays on top
-        logger.info('Adding scripture overlays...')
+        # Step 2: Build overlay filter for text overlays
+        overlay_inputs = ['-i', base_video]
+        for overlay_file in overlay_files:
+            overlay_inputs.extend(['-i', overlay_file])
+
         overlay_filters = []
         current_time = 0
 
@@ -143,7 +175,6 @@ class MeditationVideoAssembler:
             if verse_timings:
                 # Use dynamic timing from narrator
                 start_time = verse_timings[idx]['text_appears']
-                # Text stays until next text appears (or end of video)
                 if idx < len(verse_timings) - 1:
                     end_time = verse_timings[idx+1]['text_appears']
                 else:
@@ -151,69 +182,56 @@ class MeditationVideoAssembler:
             else:
                 # Use fixed timing
                 start_time = current_time
+                time_per_verse = duration / len(scriptures)
                 end_time = current_time + time_per_verse
                 current_time = end_time
-            
-            overlay_filters.append(
-                f"[0:v][{idx+1}:v]overlay=0:0:enable='between(t,{start_time},{end_time})'[v{idx}]"
-            )
-            current_time = end_time
 
-        # Build ffmpeg command with overlays
-        input_params = ['-i', base_video]
-        for overlay_file in overlay_files:
-            input_params.extend(['-i', overlay_file])
+            if idx == 0:
+                overlay_filters.append(
+                    f"[0:v][{idx+1}:v]overlay=0:0:enable='between(t,{start_time},{end_time})'[v{idx}]"
+                )
+            else:
+                overlay_filters.append(
+                    f"[v{idx-1}][{idx+1}:v]overlay=0:0:enable='between(t,{start_time},{end_time})'[v{idx}]"
+                )
 
-        # Chain overlays
-        if len(overlay_filters) == 1:
-            filter_complex = overlay_filters[0]
-            video_out = '[v0]'
-        else:
-            filter_complex = overlay_filters[0]
-            for i in range(1, len(overlay_filters)):
-                prev = f'[v{i-1}]'
-                filter_complex += ';' + overlay_filters[i].replace('[0:v]', prev)
-            video_out = f'[v{len(overlay_filters)-1}]'
+        filter_complex = ';'.join(overlay_filters)
 
-        video_with_overlays = os.path.join(self.output_dir, f'{timestamp}_with_text.mp4')
+        # Step 3: Apply text overlays
+        temp_video_with_text = os.path.join(self.output_dir, 'video_with_text.mp4')
 
-        cmd = ['ffmpeg', '-y'] + input_params + [
+        overlay_cmd = [
+            'ffmpeg', '-y'
+        ] + overlay_inputs + [
             '-filter_complex', filter_complex,
-            '-map', video_out,
+            '-map', f'[v{len(overlay_files)-1}]',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-            video_with_overlays
+            '-r', '25',
+            '-t', str(duration),
+            temp_video_with_text
         ]
-        subprocess.run(cmd, check=True, capture_output=True)
-        logger.info('Scripture overlays added')
 
-        # STEP 3: Add background music
-        if music_file and os.path.exists(music_file):
-            logger.info('Adding peaceful music...')
-            cmd = [
-                'ffmpeg', '-y',
-                '-i', video_with_overlays,
-                '-i', music_file,
-                '-filter_complex', f'[1:a]volume=0.3,aloop=loop=-1:size=2e+09[music];[music]atrim=0:{duration}[audio]',
-                '-map', '0:v', '-map', '[audio]',
-                '-c:v', 'copy', '-c:a', 'aac',
-                '-shortest',
-                output_file
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            logger.info(f'Music added: {output_file}')
-        else:
-            logger.warning('No music file - video will be silent')
-            os.rename(video_with_overlays, output_file)
+        subprocess.run(overlay_cmd, check=True, capture_output=True)
+        logger.info('Text overlays applied')
+
+        # Step 4: Add audio
+        audio_cmd = [
+            'ffmpeg', '-y',
+            '-i', temp_video_with_text,
+            '-i', music_file,
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            output_file
+        ]
+
+        subprocess.run(audio_cmd, check=True, capture_output=True)
+        logger.info(f'Final video created: {output_file}')
 
         # Cleanup
         if os.path.exists(base_video):
             os.remove(base_video)
-        if os.path.exists(video_with_overlays) and os.path.exists(output_file):
-            os.remove(video_with_overlays)
+        if os.path.exists(temp_video_with_text):
+            os.remove(temp_video_with_text)
 
-        logger.info(f'Meditation video complete: {output_file}')
         return output_file
-
-if __name__ == '__main__':
-    assembler = MeditationVideoAssembler()
-    print('Meditation Video Assembler initialized')
